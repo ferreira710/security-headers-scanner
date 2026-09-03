@@ -1,0 +1,31 @@
+services:
+  api:
+    build: ./backend
+    environment:
+      # nginx sets X-Forwarded-For, so rate limiting can trust it here. Never
+      # enable this when the service is exposed directly to the internet.
+      TRUST_PROXY_HEADERS: "true"
+      RATE_LIMIT_REQUESTS: "10"
+      RATE_LIMIT_WINDOW_SECONDS: "60"
+      CORS_ORIGINS: "http://localhost:8080"
+    expose:
+      - "8000"
+    restart: unless-stopped
+    # The container talks to the internet by design, but nothing inside it needs
+    # to write to disk or gain privileges.
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  web:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
