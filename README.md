@@ -171,13 +171,15 @@ Dois detalhes que a function trata sozinha, em [`backend/netlify/functions/scan/
 - **O teto do scan cai para 8s.** O orçamento síncrono de uma function é de 10s; se o nosso timeout fosse igual, um alvo lento mataria a invocação antes de conseguirmos responder com o erro tipado, e o usuário veria a página de erro da Netlify em vez de "o alvo demorou demais".
 - **`TRUST_PROXY_HEADERS` liga sozinho.** Ali sempre há a borda da Netlify na frente, e é ela quem define `x-nf-client-connection-ip` — o header não vem do cliente, que é a condição para o rate limiter confiar num IP encaminhado.
 
+E um terceiro, na borda: o redirect `/api/*` carrega uma regra `[redirects.rate_limit]` de 20 req/60s por IP. Ela existe porque um contador em memória se multiplica pelo número de instâncias quentes, e um burst é exatamente o que cria instâncias. O teto da borda é deliberadamente mais alto que os 10/60s da aplicação: assim quem estoura o limite normal recebe a nossa resposta tipada, com `Retry-After`, e não o 429 cru da Netlify — que o frontend não saberia ler.
+
 O container continua sendo o caminho de self-host, e a imagem final é um `FROM scratch` de ~10 MB: binário estático, sem shell, sem gerenciador de pacotes, UID não-privilegiado.
 
 ## Limitações conhecidas
 
 São escolhas, não descuidos:
 
-- **Rate limiting é em memória.** Correto para um processo, que é o que o Compose sobe. Em serverless ele vira um teto por instância: duas instâncias quentes da function dobram o limite efetivo, e é por isso que o limite que vale em produção é o configurado na borda da Netlify. Com múltiplos workers a saída é Redis (`INCR` + `EXPIRE`); a interface em [`ratelimit.go`](backend/internal/api/ratelimit.go) é o que seria trocado.
+- **O rate limiting tem duas camadas, de propósito.** O limiter em [`ratelimit.go`](backend/internal/api/ratelimit.go) é em memória: correto para um processo, mas em serverless vira um teto *por instância*, e duas instâncias quentes dobram o limite efetivo. Por isso ele é o mais baixo dos dois (10/60s) e responde primeiro, com JSON tipado que a UI sabe exibir; o teto real é a regra de rate limit presa ao redirect `/api/*` no [`netlify.toml`](netlify.toml), contada na borda antes de a function rodar. Num deploy com múltiplos workers e sem borda, a saída seria Redis (`INCR` + `EXPIRE`) atrás da mesma interface.
 - **A ordem dos headers na resposta é por nome, não a da rede.** O `net/http` entrega os headers num mapa, então a ordem de chegada entre nomes diferentes não é recuperável; repetições do *mesmo* nome preservam a ordem, que é o que a análise precisa para interseccionar duas CSPs. Headers hop-by-hop (`Connection`, `Transfer-Encoding`) não aparecem — o `net/http` os consome, e nenhum deles entra na nota.
 - **A preload list do HSTS não é consultada.** Um domínio nela está protegido mesmo sem o header, e isso não aparece na resposta HTTP. O relatório diz isso em vez de fingir que sabe.
 - **Só a resposta de uma URL é analisada.** Headers costumam variar por rota; `/` não representa o site inteiro.
