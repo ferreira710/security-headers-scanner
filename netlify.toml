@@ -1,0 +1,51 @@
+# Netlify hosts both halves: the built frontend as static files, and the scanner
+# API as a Go function under /api. Keeping the API on the site's own origin is
+# not cosmetic -- it is what lets `connect-src 'self'` below stay honest, and it
+# means the app is same-origin in dev (vite proxy), in Docker (nginx) and in
+# production alike, with no CORS preflight anywhere.
+
+[build]
+  command = "npm --prefix frontend ci && npm --prefix frontend run build"
+  publish = "frontend/dist"
+  # Go functions live in their own subdirectory; Netlify compiles them from
+  # source. The package imports backend/internal/..., which is why the function
+  # sits inside backend/ -- Go only lets code under that tree import it.
+  functions = "backend/netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "22"
+  # go.mod asks for 1.22, so any modern toolchain works; pinning keeps builds
+  # reproducible if Netlify moves its default.
+  GO_VERSION = "1.24.0"
+
+# Must come before the SPA fallback, or /api/* would be served index.html.
+# The function normalises this path back to /api/... internally, so the handler
+# sees the same routes it sees when the container serves them directly.
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/scan/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# The same headers nginx.conf sends in the Docker setup. A scanner that grades
+# security headers has to pass its own report.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+
+# Vite fingerprints these filenames, so they can never go stale.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

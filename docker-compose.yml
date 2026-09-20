@@ -1,6 +1,10 @@
 services:
   api:
-    build: ./backend
+    # Context is the repo root because go.mod lives there: the API binary and
+    # the Netlify function are built from one module.
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     environment:
       # nginx sets X-Forwarded-For, so rate limiting can trust it here. Never
       # enable this when the service is exposed directly to the internet.

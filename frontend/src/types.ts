@@ -6,9 +6,18 @@
  * has to handle it.
  */
 
-// --- Wire format (mirrors backend/app/schemas.py) ---------------------------
+// --- Wire format (mirrors backend/internal/api/api.go) ----------------------
 
-/** One header line, in wire order. Duplicates are preserved and meaningful. */
+/**
+ * One header line. Duplicates are preserved and meaningful: two
+ * Content-Security-Policy headers are intersected by the browser.
+ *
+ * Ordering is by header name, not wire order -- Go's net/http lands response
+ * headers in a map, so the order they arrived in is not recoverable. Repeats of
+ * the *same* name do keep their arrival order, which is what the analysis
+ * needs. Hop-by-hop headers (Connection, Transfer-Encoding) never appear:
+ * net/http consumes them, and none of them affect the grade.
+ */
 export interface RawHeader {
   readonly name: string;
   readonly value: string;
@@ -31,7 +40,7 @@ export interface ScanResponseDto {
 
 // --- Errors -----------------------------------------------------------------
 
-/** Mirrors `ScanErrorCode` in backend/app/errors.py, plus client-only cases. */
+/** Mirrors `Code` in backend/internal/scanner/errors.go, plus client-only cases. */
 export type ScanErrorCode =
   | 'invalid_url'
   | 'blocked_target'

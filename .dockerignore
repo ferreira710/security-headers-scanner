@@ -1,0 +1,13 @@
+# The API image builds from the repo root (go.mod lives there), so everything
+# the Go build does not need is excluded here -- otherwise the build context
+# would carry node_modules, the old virtualenv and all of .git.
+.git/
+.github/
+frontend/
+**/node_modules/
+backend/.venv/
+backend/.pytest_cache/
+*.md
+LICENSE
+netlify.toml
+docker-compose.yml
