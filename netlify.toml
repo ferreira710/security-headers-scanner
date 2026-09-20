@@ -14,9 +14,10 @@
 
 [build.environment]
   NODE_VERSION = "22"
-  # go.mod asks for 1.22, so any modern toolchain works; pinning keeps builds
-  # reproducible if Netlify moves its default.
-  GO_VERSION = "1.24.0"
+  # Has to be >= the go directive in go.mod (1.26): the dependency versions
+  # that carry the x/text and x/net/idna fixes require it, and an IDNA bug is
+  # reachable straight from user input in guard.go.
+  GO_VERSION = "1.26.0"
 
 # Must come before the SPA fallback, or /api/* would be served index.html.
 # The function normalises this path back to /api/... internally, so the handler
@@ -27,18 +28,10 @@
   status = 200
   force = true
 
-  # Teto duro, contado na borda antes de a function rodar -- e, por isso, o
-  # unico que vale entre varias instancias. O limiter em processo (10/60s) e
-  # deliberadamente mais baixo: ele responde primeiro, com JSON tipado e
-  # Retry-After que o frontend sabe exibir, enquanto este aqui so entra quando
-  # um burst espalha as requisicoes por instancias quentes diferentes -- que e
-  # exatamente o buraco que um contador em memoria tem. Se os dois fossem 10,
-  # a borda ganharia a corrida e o usuario veria o 429 cru da Netlify.
-  # Baixe para ~12 se quiser o teto real mais perto dos 10/60s pretendidos.
-  [redirects.rate_limit]
-    window_limit = 20
-    window_size = 60          # maximo permitido: 180
-    aggregate_by = ["ip", "domain"]
+  # O rate limit NAO mora aqui: a Netlify documenta que limites em
+  # netlify.toml nao se aplicam quando o alvo do redirect e uma function, e o
+  # teste empirico confirmou (25 requisicoes passaram intactas). A regra real
+  # esta em netlify/edge-functions/api-rate-limit.ts.
 
 [[redirects]]
   from = "/*"
